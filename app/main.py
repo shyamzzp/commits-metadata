@@ -16,12 +16,14 @@ from app.github.url_parser import GitHubURLError, RefKind, parse_github_url
 from app.models import (
     CommitRequest,
     FeatureMetadata,
+    FeatureSearchResponse,
     JobResult,
     OrgRequest,
     RepoRequest,
 )
 from app.observability.telemetry import Telemetry
 from app.processing.engine import ProcessingEngine
+from app.search.recommender import FeatureRecommender
 from app.storage.stores import StorageBundle
 
 
@@ -31,6 +33,8 @@ class AppState:
     def __init__(self) -> None:
         self.storage = StorageBundle()
         self.telemetry = Telemetry()
+        # Recommender shares the metadata store; its index rebuilds on change.
+        self.recommender = FeatureRecommender(self.storage.metadata)
 
 
 @asynccontextmanager
@@ -82,12 +86,42 @@ async def root() -> dict:
             "/process/org",
             "/commits",
             "/commits/{repo}/{sha}",
+            "/search/features",
+            "/search/suggest",
             "/dashboard",
             "/export",
             "/webhook/github",
             "/metrics",
         ],
     }
+
+
+# --------------------------------------------------------------------------- #
+# Semantic feature search
+# --------------------------------------------------------------------------- #
+@app.get("/search/features", response_model=FeatureSearchResponse, tags=["search"])
+async def search_features(
+    q: str = Query(..., min_length=1, description="Free-text feature query, e.g. 'building pagination'"),
+    limit: int = Query(default=10, ge=1, le=100, description="Per-page result limit"),
+    offset: int = Query(default=0, ge=0),
+    ai: bool = Query(default=False, description="Enable hybrid AI (embedding) re-ranking"),
+    min_score: float = Query(default=0.0, ge=0.0, le=1.0),
+    state: AppState = Depends(get_state),
+) -> FeatureSearchResponse:
+    """Rank the most relevant features from stored commit metadata for a query."""
+    return state.recommender.search(
+        q, limit=limit, offset=offset, min_score=min_score, use_ai=ai
+    )
+
+
+@app.get("/search/suggest", tags=["search"])
+async def search_suggest(
+    prefix: str = Query(..., min_length=1, description="Autocomplete prefix"),
+    limit: int = Query(default=8, ge=1, le=25),
+    state: AppState = Depends(get_state),
+) -> dict:
+    """Autocomplete suggestions for the search box."""
+    return {"prefix": prefix, "suggestions": state.recommender.suggest(prefix, limit=limit)}
 
 
 # --------------------------------------------------------------------------- #
