@@ -174,6 +174,32 @@ flowchart LR
 | JSON Exporter / Download | [`app/exporter.py`](../app/exporter.py) |
 | Scheduler / Webhook / Incremental | [`app/automation/`](../app/automation) |
 | Logs / Metrics / Error Tracker | [`app/observability/telemetry.py`](../app/observability/telemetry.py) |
+| Search tokenizer + query expansion | [`app/search/tokenizer.py`](../app/search/tokenizer.py) |
+| Feature index + BM25 | [`app/search/feature_index.py`](../app/search/feature_index.py) |
+| Embeddings + hybrid re-rank | [`app/search/embeddings.py`](../app/search/embeddings.py) |
+| Feature recommender + autocomplete | [`app/search/recommender.py`](../app/search/recommender.py) |
+
+## Semantic feature search
+
+A separate read path turns the stored metadata into a ranked feature
+recommender:
+
+```mermaid
+flowchart LR
+    Q["Query e.g. 'building pagination'"] --> TOK["Tokenize"]
+    TOK --> EXP["Query Expansion (synonym lexicon)"]
+    Store["Feature Metadata Store"] --> IDX["Feature Index (BM25)"]
+    EXP --> BM25["BM25 scoring"]
+    IDX --> BM25
+    BM25 --> NORM["Normalize 0..1"]
+    EMB["Embeddings (optional AI)"] -. hybrid .-> NORM
+    NORM --> RANK["Ranked FeatureSuggestions + relevance tier"]
+    RANK --> API2["/search/features"]
+    IDX --> SUG["/search/suggest (autocomplete)"]
+```
+
+The index rebuilds automatically whenever the metadata store changes size, so
+freshly processed commits become searchable with no extra step.
 
 ## Pipeline order
 

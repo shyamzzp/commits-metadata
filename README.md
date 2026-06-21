@@ -61,6 +61,8 @@ python app.py                        # http://127.0.0.1:7860
 | `POST` | `/process/org` | Process every repo in an org/user |
 | `GET`  | `/commits` | Search/browse processed commits |
 | `GET`  | `/commits/{owner}/{repo}/{sha}` | Fetch one stored record |
+| `GET`  | `/search/features` | **Semantic feature search** — rank stored features by relevance to a query |
+| `GET`  | `/search/suggest` | Autocomplete suggestions for the search box |
 | `GET`  | `/dashboard` | Aggregate counts by type/repo |
 | `GET`  | `/export` | Download bundled JSON |
 | `POST` | `/webhook/github` | GitHub push webhook (incremental) |
@@ -76,6 +78,32 @@ curl -X POST http://127.0.0.1:8000/process/commit \
 
 A ready-made **Postman collection** lives at
 [`postman/commits-metadata.postman_collection.json`](postman/commits-metadata.postman_collection.json).
+
+### Semantic feature search
+
+Once commits are processed, query the corpus in natural language:
+
+```bash
+curl "http://127.0.0.1:8000/search/features?q=building+pagination&limit=10"
+```
+
+returns the most relevant features ranked by score (0..1), e.g. *per-page
+limits / offset cursor*, *autocomplete search box*, *action buttons on
+paginated rows*. How it works:
+
+1. Every stored `FeatureMetadata` is indexed into a searchable feature document
+   (subject + tags + file categories + languages + filenames).
+2. The query is tokenized and **expanded via a domain synonym lexicon**
+   (`pagination` → page / offset / limit / scroll …) so related features surface
+   even without exact word matches.
+3. Documents are scored with **BM25**; scores are normalized to `0..1` and
+   bucketed into `high` / `medium` / `low` relevance.
+4. Pass `ai=true` for **hybrid re-ranking** that blends BM25 with embedding
+   cosine similarity. The default embedder is deterministic and key-free; inject
+   a real model (`Embedder(embed_fn=...)`) for true semantic matching.
+
+`/search/suggest?prefix=pag` powers the autocomplete dropdown; `limit`/`offset`
+on `/search/features` give per-page result paging.
 
 ## Configuration
 

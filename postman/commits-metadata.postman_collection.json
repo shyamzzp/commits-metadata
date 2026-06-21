@@ -254,6 +254,115 @@
       ]
     },
     {
+      "name": "Search",
+      "item": [
+        {
+          "name": "Search Features",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/search/features?q=building pagination&limit=10&ai=false",
+              "host": ["{{base_url}}"],
+              "path": ["search", "features"],
+              "query": [
+                { "key": "q", "value": "building pagination" },
+                { "key": "limit", "value": "10" },
+                { "key": "offset", "value": "0" },
+                { "key": "ai", "value": "false" },
+                { "key": "min_score", "value": "0" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('echoes query', () => pm.expect(b.query).to.eql('building pagination'));",
+                  "pm.test('has method', () => pm.expect(['lexical','hybrid']).to.include(b.method));",
+                  "pm.test('results sorted desc by score', () => {",
+                  "  const s = b.results.map(r => r.score);",
+                  "  for (let i=1;i<s.length;i++) pm.expect(s[i-1]).to.be.at.least(s[i]);",
+                  "});",
+                  "pm.test('scores are 0..1', () => b.results.forEach(r => pm.expect(r.score).to.be.within(0,1)));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Search Features (AI hybrid)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/search/features?q=building pagination&ai=true",
+              "host": ["{{base_url}}"],
+              "path": ["search", "features"],
+              "query": [
+                { "key": "q", "value": "building pagination" },
+                { "key": "ai", "value": "true" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('hybrid method', () => pm.expect(pm.response.json().method).to.eql('hybrid'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Autocomplete Suggest",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/search/suggest?prefix=pag&limit=8",
+              "host": ["{{base_url}}"],
+              "path": ["search", "suggest"],
+              "query": [
+                { "key": "prefix", "value": "pag" },
+                { "key": "limit", "value": "8" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('suggestions array', () => pm.expect(pm.response.json().suggestions).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Search Features (missing q -> 422)",
+          "request": { "method": "GET", "url": "{{base_url}}/search/features" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('422', () => pm.response.to.have.status(422));"]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "Automation",
       "item": [
         {
