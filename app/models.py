@@ -118,3 +118,37 @@ class JobResult(BaseModel):
     failed: int = 0
     commits: list[FeatureMetadata] = Field(default_factory=list)
     errors: list[dict] = Field(default_factory=list)
+
+
+# --------------------------------------------------------------------------- #
+# Semantic feature search
+# --------------------------------------------------------------------------- #
+class Relevance(str, Enum):
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+
+
+class FeatureSuggestion(BaseModel):
+    """One ranked feature surfaced from the stored commit metadata."""
+
+    id: str
+    title: str
+    repository: str
+    sha: str
+    short_sha: str
+    url: str
+    change_type: ChangeType
+    score: float  # normalized 0..1 relative to the top hit
+    relevance: Relevance
+    matched_terms: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+
+
+class FeatureSearchResponse(BaseModel):
+    query: str
+    method: str  # "lexical" | "hybrid"
+    expanded_terms: list[str] = Field(default_factory=list)
+    total_indexed: int = 0
+    returned: int = 0
+    results: list[FeatureSuggestion] = Field(default_factory=list)
