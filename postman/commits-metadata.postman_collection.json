@@ -1,0 +1,289 @@
+{
+  "info": {
+    "name": "commits-metadata API",
+    "description": "Test collection for the commits-metadata service. Set the `base_url` collection variable (default http://127.0.0.1:8000) and a real `commit_url` / `repo_url`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://127.0.0.1:8000" },
+    { "key": "commit_url", "value": "https://github.com/octocat/Hello-World/commit/7fd1a60b01f91b314f59955a4e4d4e80d8edf11d" },
+    { "key": "repo_url", "value": "https://github.com/octocat/Hello-World" },
+    { "key": "org_url", "value": "https://github.com/octocat" },
+    { "key": "repository", "value": "octocat/Hello-World" },
+    { "key": "sha", "value": "7fd1a60b01f91b314f59955a4e4d4e80d8edf11d" }
+  ],
+  "item": [
+    {
+      "name": "Meta",
+      "item": [
+        {
+          "name": "Health",
+          "request": { "method": "GET", "url": "{{base_url}}/health" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('status ok', () => pm.expect(pm.response.json().status).to.eql('ok'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Root",
+          "request": { "method": "GET", "url": "{{base_url}}/" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('lists endpoints', () => pm.expect(pm.response.json().endpoints).to.include('/process/commit'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Processing",
+      "item": [
+        {
+          "name": "Process Commit",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"commit_url\": \"{{commit_url}}\",\n  \"config\": { \"include_diff\": true, \"enable_llm\": false }\n}"
+            },
+            "url": "{{base_url}}/process/commit"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('has sha', () => pm.expect(b.sha).to.be.a('string'));",
+                  "pm.test('has change_type', () => pm.expect(b.change_type).to.be.a('string'));",
+                  "pm.test('schema_version', () => pm.expect(b.schema_version).to.eql('1.0'));",
+                  "if (b.repository) pm.collectionVariables.set('repository', b.repository);",
+                  "if (b.sha) pm.collectionVariables.set('sha', b.sha);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Process Repo",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"repo_url\": \"{{repo_url}}\",\n  \"config\": { \"max_commits\": 10, \"dedupe\": true }\n}"
+            },
+            "url": "{{base_url}}/process/repo"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('has job_id', () => pm.expect(b.job_id).to.be.a('string'));",
+                  "pm.test('status valid', () => pm.expect(['completed','partial','failed']).to.include(b.status));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Process Org",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"org_url\": \"{{org_url}}\",\n  \"config\": { \"max_commits\": 5 }\n}"
+            },
+            "url": "{{base_url}}/process/org"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('has jobs', () => pm.expect(pm.response.json().jobs).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Process Commit (invalid URL -> 422)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"commit_url\": \"https://gitlab.com/x/y\"\n}" },
+            "url": "{{base_url}}/process/commit"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('422 Unprocessable', () => pm.response.to.have.status(422));"]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Output",
+      "item": [
+        {
+          "name": "Search Commits",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/commits?repository={{repository}}&limit=50",
+              "host": ["{{base_url}}"],
+              "path": ["commits"],
+              "query": [
+                { "key": "repository", "value": "{{repository}}" },
+                { "key": "limit", "value": "50" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('array', () => pm.expect(pm.response.json()).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Commit Metadata",
+          "request": { "method": "GET", "url": "{{base_url}}/commits/{{repository}}/{{sha}}" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('200 or 404', () => pm.expect([200,404]).to.include(pm.response.code));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Dashboard",
+          "request": { "method": "GET", "url": "{{base_url}}/dashboard" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('total_commits', () => pm.expect(pm.response.json()).to.have.property('total_commits'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Export JSON",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/export?repository={{repository}}",
+              "host": ["{{base_url}}"],
+              "path": ["export"],
+              "query": [{ "key": "repository", "value": "{{repository}}" }]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('attachment', () => pm.expect(pm.response.headers.get('content-disposition')).to.include('attachment'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Metrics",
+          "request": { "method": "GET", "url": "{{base_url}}/metrics" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('counters', () => pm.expect(pm.response.json()).to.have.property('counters'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Automation",
+      "item": [
+        {
+          "name": "GitHub Webhook (push)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-GitHub-Event", "value": "push" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"repository\": { \"full_name\": \"{{repository}}\" },\n  \"commits\": [ { \"id\": \"{{sha}}\" } ]\n}"
+            },
+            "url": "{{base_url}}/webhook/github"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('processed present', () => pm.expect(pm.response.json()).to.have.property('processed'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
