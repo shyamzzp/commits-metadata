@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shyamzzp/commits-metadata/feature_metadata.schema.json",
+  "title": "FeatureMetadata",
+  "description": "Fixed JSON response shape for a processed GitHub commit.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "sha",
+    "short_sha",
+    "repository",
+    "url",
+    "message",
+    "change_type"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "sha": { "type": "string", "pattern": "^[0-9a-fA-F]{7,40}$" },
+    "short_sha": { "type": "string" },
+    "repository": { "type": "string", "pattern": "^[^/]+/[^/]+$" },
+    "url": { "type": "string" },
+    "author_name": { "type": ["string", "null"] },
+    "author_email": { "type": ["string", "null"] },
+    "authored_at": { "type": ["string", "null"] },
+    "committed_at": { "type": ["string", "null"] },
+    "message": { "type": "string" },
+    "message_subject": { "type": "string" },
+    "change_type": {
+      "type": "string",
+      "enum": [
+        "feature", "bugfix", "refactor", "docs", "test", "chore",
+        "style", "perf", "build", "ci", "revert", "unknown"
+      ]
+    },
+    "is_merge": { "type": "boolean" },
+    "breaking_change": { "type": "boolean" },
+    "issue_references": { "type": "array", "items": { "type": "string" } },
+    "tags": { "type": "array", "items": { "type": "string" } },
+    "stats": { "type": "object" },
+    "file_categories": { "type": "object" },
+    "languages": { "type": "array", "items": { "type": "string" } },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["filename", "status"],
+        "properties": {
+          "filename": { "type": "string" },
+          "status": { "type": "string" },
+          "additions": { "type": "integer" },
+          "deletions": { "type": "integer" },
+          "changes": { "type": "integer" },
+          "category": { "type": "string" },
+          "language": { "type": ["string", "null"] },
+          "patch": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "llm_summary": { "type": ["string", "null"] }
+  }
+}
