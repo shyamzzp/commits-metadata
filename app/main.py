@@ -19,11 +19,13 @@ from app.models import (
     FeatureSearchResponse,
     JobResult,
     OrgRequest,
+    RelatedSearchResponse,
     RepoRequest,
 )
 from app.observability.telemetry import Telemetry
 from app.processing.engine import ProcessingEngine
 from app.search.recommender import FeatureRecommender
+from app.search.related import RelatedEngine
 from app.storage.stores import StorageBundle
 
 
@@ -35,6 +37,7 @@ class AppState:
         self.telemetry = Telemetry()
         # Recommender shares the metadata store; its index rebuilds on change.
         self.recommender = FeatureRecommender(self.storage.metadata)
+        self.related = RelatedEngine(self.recommender)
 
 
 @asynccontextmanager
@@ -87,6 +90,7 @@ async def root() -> dict:
             "/commits",
             "/commits/{repo}/{sha}",
             "/search/features",
+            "/search/related",
             "/search/suggest",
             "/dashboard",
             "/export",
@@ -122,6 +126,21 @@ async def search_suggest(
 ) -> dict:
     """Autocomplete suggestions for the search box."""
     return {"prefix": prefix, "suggestions": state.recommender.suggest(prefix, limit=limit)}
+
+
+@app.get("/search/related", response_model=RelatedSearchResponse, tags=["search"])
+async def search_related(
+    q: str = Query(..., min_length=1, description="Free-text query, e.g. 'building pagination'"),
+    limit: int = Query(default=10, ge=1, le=50, description="Max related features"),
+    seed_k: int = Query(default=5, ge=1, le=20, description="How many relevant hits seed the adjacency"),
+    suggest_limit: int = Query(default=8, ge=1, le=25),
+    ai: bool = Query(default=False, description="Use hybrid AI ranking for the seed hits"),
+    state: AppState = Depends(get_state),
+) -> RelatedSearchResponse:
+    """People-Also-Asked for features: related + suggested features for a query."""
+    return state.related.related(
+        q, seed_k=seed_k, limit=limit, suggest_limit=suggest_limit, use_ai=ai
+    )
 
 
 # --------------------------------------------------------------------------- #
