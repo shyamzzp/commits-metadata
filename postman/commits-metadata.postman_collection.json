@@ -359,6 +359,64 @@
               }
             }
           ]
+        },
+        {
+          "name": "Related Features (People Also Asked)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/search/related?q=building pagination&limit=10",
+              "host": ["{{base_url}}"],
+              "path": ["search", "related"],
+              "query": [
+                { "key": "q", "value": "building pagination" },
+                { "key": "limit", "value": "10" },
+                { "key": "seed_k", "value": "5" },
+                { "key": "suggest_limit", "value": "8" },
+                { "key": "ai", "value": "false" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('echoes query', () => pm.expect(b.query).to.eql('building pagination'));",
+                  "pm.test('has capabilities', () => pm.expect(b.capabilities).to.be.an('array'));",
+                  "pm.test('seeds + related + suggested present', () => {",
+                  "  pm.expect(b).to.have.property('seeds');",
+                  "  pm.expect(b).to.have.property('related_features');",
+                  "  pm.expect(b).to.have.property('suggested_features');",
+                  "});",
+                  "pm.test('related excludes seeds', () => {",
+                  "  const seedIds = new Set(b.seeds.map(s => s.id));",
+                  "  b.related_features.forEach(r => pm.expect(seedIds.has(r.id)).to.be.false);",
+                  "});",
+                  "pm.test('related sorted desc by relatedness', () => {",
+                  "  const s = b.related_features.map(r => r.relatedness);",
+                  "  for (let i=1;i<s.length;i++) pm.expect(s[i-1]).to.be.at.least(s[i]);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Related Features (missing q -> 422)",
+          "request": { "method": "GET", "url": "{{base_url}}/search/related" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('422', () => pm.response.to.have.status(422));"]
+              }
+            }
+          ]
         }
       ]
     },

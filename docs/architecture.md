@@ -178,6 +178,7 @@ flowchart LR
 | Feature index + BM25 | [`app/search/feature_index.py`](../app/search/feature_index.py) |
 | Embeddings + hybrid re-rank | [`app/search/embeddings.py`](../app/search/embeddings.py) |
 | Feature recommender + autocomplete | [`app/search/recommender.py`](../app/search/recommender.py) |
+| People-Also-Asked related/suggested engine | [`app/search/related.py`](../app/search/related.py) |
 
 ## Semantic feature search
 
@@ -200,6 +201,26 @@ flowchart LR
 
 The index rebuilds automatically whenever the metadata store changes size, so
 freshly processed commits become searchable with no extra step.
+
+### People-Also-Asked for features (`/search/related`)
+
+```mermaid
+flowchart LR
+    Q2["Query"] --> SEED["Relevant hits (seeds)\nvia recommender"]
+    SEED --> ADJ["Adjacency scoring\n(tags / terms / repo / capability)"]
+    Store2["Feature Metadata Store"] --> ADJ
+    ADJ --> REL["related_features\n(+ relation reasons)"]
+    SEED --> SUG2["Capability lexicon\n+ related titles"]
+    REL --> SUG2
+    SUG2 --> SUGOUT["suggested_features\n(people also asked)"]
+    REL --> API3["/search/related"]
+    SUGOUT --> API3
+```
+
+`related_features` are real features that co-occur with the seeds (seeds
+excluded); `suggested_features` are short capability/feature suggestions
+synthesized from the adjacent set and the capability lexicon — each grounded
+with a support count and example feature ids.
 
 ## Pipeline order
 

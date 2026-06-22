@@ -62,6 +62,7 @@ python app.py                        # http://127.0.0.1:7860
 | `GET`  | `/commits` | Search/browse processed commits |
 | `GET`  | `/commits/{owner}/{repo}/{sha}` | Fetch one stored record |
 | `GET`  | `/search/features` | **Semantic feature search** — rank stored features by relevance to a query |
+| `GET`  | `/search/related` | **People-Also-Asked for features** — related + suggested features for a query |
 | `GET`  | `/search/suggest` | Autocomplete suggestions for the search box |
 | `GET`  | `/dashboard` | Aggregate counts by type/repo |
 | `GET`  | `/export` | Download bundled JSON |
@@ -104,6 +105,31 @@ paginated rows*. How it works:
 
 `/search/suggest?prefix=pag` powers the autocomplete dropdown; `limit`/`offset`
 on `/search/features` give per-page result paging.
+
+### People-Also-Asked for features
+
+`/search/features` answers *"what's relevant to my query"*. `/search/related`
+answers *"what else do people build alongside it"* — the **People Also Asked**
+pattern, but for features/commits:
+
+```bash
+curl "http://127.0.0.1:8000/search/related?q=building+pagination"
+```
+
+returns three groups, all grounded in the stored data:
+
+- **`seeds`** — the directly relevant features (same ranking as `/search/features`).
+- **`related_features`** — other features that *co-occur* with the seeds, scored
+  by shared tags, similar terms, same repository, and shared capability area,
+  each with human-readable `relation_reasons` (e.g. *"shared capability:
+  ui-actions"*). Seeds are excluded so it's genuinely "also".
+- **`suggested_features`** — short "you might also want" suggestions synthesized
+  from adjacent **capability areas** (e.g. `limits`, `ui-actions`, `sorting`)
+  and concrete related features, each with a `support` count and example ids.
+
+So a query for *building pagination* surfaces per-page limits and offset cursors
+as relevant, then *also* suggests sortable columns, action buttons on rows, and
+rate-limiting — because that's what ships with pagination in your codebase.
 
 ## Configuration
 
