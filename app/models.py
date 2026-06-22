@@ -152,3 +152,41 @@ class FeatureSearchResponse(BaseModel):
     total_indexed: int = 0
     returned: int = 0
     results: list[FeatureSuggestion] = Field(default_factory=list)
+
+
+# --------------------------------------------------------------------------- #
+# "People also asked" — related + suggested features
+# --------------------------------------------------------------------------- #
+class RelatedFeature(BaseModel):
+    """A feature adjacent to the query's relevant hits (co-occurrence based)."""
+
+    id: str
+    title: str
+    repository: str
+    sha: str
+    short_sha: str
+    url: str
+    change_type: ChangeType
+    relatedness: float  # 0..1
+    support: int  # how many seed hits it relates to
+    relation_reasons: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+
+
+class SuggestedFeature(BaseModel):
+    """A synthesized "you might also want" suggestion, grounded in the data."""
+
+    text: str
+    kind: str  # "capability" | "feature"
+    reason: str
+    support: int = 0
+    examples: list[str] = Field(default_factory=list)  # feature ids backing it
+
+
+class RelatedSearchResponse(BaseModel):
+    query: str
+    total_indexed: int = 0
+    capabilities: list[str] = Field(default_factory=list)  # query capability areas
+    seeds: list[FeatureSuggestion] = Field(default_factory=list)
+    related_features: list[RelatedFeature] = Field(default_factory=list)
+    suggested_features: list[SuggestedFeature] = Field(default_factory=list)

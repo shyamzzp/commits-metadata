@@ -55,6 +55,10 @@ class FeatureRecommender:
         self._indexed_size = -1
         return self._ensure_index().size
 
+    def current_index(self) -> FeatureIndex:
+        """Return the up-to-date index (rebuilding if the store changed)."""
+        return self._ensure_index()
+
     # --- search ------------------------------------------------------------ #
     def search(
         self,
