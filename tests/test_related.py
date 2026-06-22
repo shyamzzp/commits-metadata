@@ -86,6 +86,48 @@ class TestSuggestedFeatures:
         assert len(texts) == len(set(texts))
 
 
+class TestDownWeighting:
+    def _store_with_generic_noise(self):
+        # Every commit touches the same Python file (shared generic vocabulary).
+        # The seed is about pagination; one candidate shares a *distinctive*
+        # non-query term ("redis") with it, the others share only generic noise.
+        s = MetadataStore()
+        common_files = [{"filename": "app/core.py", "status": "modified",
+                         "additions": 1, "deletions": 0, "changes": 1}]
+        docs = [
+            ("a1", "feat: add pagination with redis offset cursor"),       # seed (matches query)
+            ("b2", "feat: add redis connection pooling for workers"),      # distinctive overlap: redis
+            ("c3", "docs: tweak the changelog wording"),                   # generic only
+            ("d4", "fix: adjust the default log level"),                   # generic only
+        ]
+        for sha, msg in docs:
+            s.put(build_metadata(make_commit_payload(sha=sha * 8, message=msg, files=common_files), repository="acme/app"))
+        return s
+
+    def test_distinctive_overlap_outranks_generic_only(self):
+        eng = _engine(self._store_with_generic_noise())
+        resp = eng.related("pagination")
+        assert resp.related_features, "expected related features"
+        top = resp.related_features[0]
+        assert "redis" in top.title  # the only doc sharing a distinctive term
+
+    def test_generic_terms_absent_from_reasons(self):
+        eng = _engine(self._store_with_generic_noise())
+        resp = eng.related("pagination")
+        joined = " ".join(r for rf in resp.related_features for r in rf.relation_reasons)
+        # ubiquitous file vocabulary (app/core/py) must not surface as distinctive
+        assert "core" not in joined
+        assert "distinctive terms: app" not in joined
+
+    def test_same_repo_alone_does_not_qualify(self):
+        # Commits sharing nothing but the repo + ubiquitous file must be dropped.
+        eng = _engine(self._store_with_generic_noise())
+        resp = eng.related("pagination")
+        titles = [r.title for r in resp.related_features]
+        assert not any("changelog" in t for t in titles)
+        assert not any("log level" in t for t in titles)
+
+
 class TestEdgeCases:
     def test_empty_store(self):
         eng = _engine(MetadataStore())

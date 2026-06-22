@@ -13,6 +13,8 @@ Everything is grounded in stored data; nothing is invented.
 
 from __future__ import annotations
 
+from collections import Counter
+
 from app.models import (
     ChangeType,
     RelatedFeature,
@@ -23,13 +25,18 @@ from app.search.feature_index import FeatureDocument
 from app.search.recommender import FeatureRecommender
 from app.search.tokenizer import capability_labels, expand_query, tokenize
 
-# Relatedness component weights (sum to 1.0).
+# Content relatedness weights (sum to 1.0). "same repository" is only an
+# additive *bonus* on top of real content overlap — never a qualifier on its own.
 _W_TAGS = 0.4
 _W_TERMS = 0.4
-_W_REPO = 0.1
-_W_CAP = 0.1
+_W_CAP = 0.2
+_W_REPO_BONUS = 0.05
 
-# Generic tags that shouldn't, on their own, make two features "related".
+# Tags/terms appearing in more than this fraction of the corpus are treated as
+# ubiquitous (no discriminating power) and ignored in the overlap signals.
+_UBIQUITOUS_RATIO = 0.6
+
+# Tags that are generic regardless of corpus frequency.
 _GENERIC_TAGS = {"cat:source", "cat:other"}
 
 
@@ -39,6 +46,26 @@ def _jaccard(a: set, b: set) -> float:
     inter = len(a & b)
     union = len(a | b)
     return inter / union if union else 0.0
+
+
+def _weighted_term_overlap(
+    a: set, b: set, idf: dict[str, float]
+) -> tuple[float, list[str]]:
+    """IDF-weighted overlap of two token sets, in [0, 1].
+
+    Rare (high-IDF) shared tokens count far more than common ones, so generic
+    vocabulary stops dominating. Returns the score plus the most distinctive
+    shared tokens (for human-readable reasons).
+    """
+    shared = a & b
+    if not shared:
+        return 0.0, []
+    union = a | b
+    num = sum(idf.get(t, 0.0) for t in shared)
+    denom = sum(idf.get(t, 0.0) for t in union)
+    score = (num / denom) if denom > 0 else 0.0
+    top = sorted(shared, key=lambda t: idf.get(t, 0.0), reverse=True)[:3]
+    return score, top
 
 
 def _to_change_type(value: str) -> ChangeType:
@@ -69,6 +96,18 @@ class RelatedEngine:
         query_terms = set(expand_query(tokenize(query)).keys())
         query_caps = capability_labels(tokenize(query))
 
+        # Corpus-frequency structures: ignore ubiquitous terms/tags so only
+        # distinctive co-occurrence drives relatedness.
+        n = max(1, index.size)
+        common_terms = {t for t, df in index.df.items() if df / n > _UBIQUITOUS_RATIO}
+        tag_counts: Counter = Counter()
+        for d in index.docs:
+            tag_counts.update(set(d.tags))
+        generic_tags = set(_GENERIC_TAGS) | {
+            tag for tag, cnt in tag_counts.items() if cnt / n > _UBIQUITOUS_RATIO
+        }
+        idf = index.idf
+
         # --- related features (co-occurrence with the seeds) --------------- #
         related: list[RelatedFeature] = []
         for cand in index.docs:
@@ -78,7 +117,9 @@ class RelatedEngine:
             reasons: list[str] = []
             support = 0
             for seed_doc in seed_docs:
-                score, why = self._relatedness(seed_doc, cand, query_terms)
+                score, why = self._relatedness(
+                    seed_doc, cand, query_terms, idf, common_terms, generic_tags
+                )
                 if score > 0:
                     support += 1
                     for r in why:
@@ -121,39 +162,47 @@ class RelatedEngine:
 
     # --- internals --------------------------------------------------------- #
     def _relatedness(
-        self, seed: FeatureDocument, cand: FeatureDocument, query_terms: set
+        self,
+        seed: FeatureDocument,
+        cand: FeatureDocument,
+        query_terms: set,
+        idf: dict[str, float],
+        common_terms: set,
+        generic_tags: set,
     ) -> tuple[float, list[str]]:
-        score = 0.0
         reasons: list[str] = []
 
-        s_tags = set(seed.tags) - _GENERIC_TAGS
-        c_tags = set(cand.tags) - _GENERIC_TAGS
+        # Content signals (these alone decide whether a feature is "related").
+        s_tags = set(seed.tags) - generic_tags
+        c_tags = set(cand.tags) - generic_tags
         tag_j = _jaccard(s_tags, c_tags)
         if tag_j > 0:
-            score += _W_TAGS * tag_j
             shared = sorted(s_tags & c_tags)[:3]
             if shared:
                 reasons.append("shared tags: " + ", ".join(shared))
 
-        s_tok = set(seed.tokens) - query_terms
-        c_tok = set(cand.tokens) - query_terms
-        tok_j = _jaccard(s_tok, c_tok)
-        if tok_j > 0:
-            score += _W_TERMS * tok_j
-            shared_tok = sorted(s_tok & c_tok)[:3]
-            if shared_tok:
-                reasons.append("similar terms: " + ", ".join(shared_tok))
-
-        if seed.repository == cand.repository:
-            score += _W_REPO
-            reasons.append("same repository")
+        s_tok = set(seed.tokens) - query_terms - common_terms
+        c_tok = set(cand.tokens) - query_terms - common_terms
+        tok_w, top_tok = _weighted_term_overlap(s_tok, c_tok, idf)
+        if tok_w > 0 and top_tok:
+            reasons.append("distinctive terms: " + ", ".join(top_tok))
 
         s_caps = set(capability_labels(seed.tokens))
         c_caps = set(capability_labels(cand.tokens))
         cap_overlap = s_caps & c_caps
+        cap_signal = 1.0 if cap_overlap else 0.0
         if cap_overlap:
-            score += _W_CAP
             reasons.append("shared capability: " + ", ".join(sorted(cap_overlap)))
+
+        content = _W_TAGS * tag_j + _W_TERMS * tok_w + _W_CAP * cap_signal
+        if content <= 0:
+            # Same-repo (or any ubiquitous-only) overlap is NOT enough on its own.
+            return 0.0, []
+
+        score = content
+        if seed.repository == cand.repository:
+            score = min(1.0, score + _W_REPO_BONUS)
+            reasons.append("same repository")
 
         return score, reasons
 
