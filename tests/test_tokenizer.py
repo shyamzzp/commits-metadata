@@ -1,4 +1,4 @@
-from app.search.tokenizer import expand_query, stem, tokenize
+from app.search.tokenizer import capability_labels, expand_query, stem, tokenize
 
 
 class TestTokenize:
@@ -42,3 +42,20 @@ class TestExpandQuery:
     def test_unknown_term_has_no_expansion(self):
         weights = expand_query(tokenize("zzzxqq"))
         assert all(v == 1.0 for v in weights.values())
+
+
+class TestCapabilityLabels:
+    def test_detects_pagination(self):
+        assert "pagination" in capability_labels(tokenize("add pagination offset"))
+
+    def test_detects_multiple_areas(self):
+        labels = capability_labels(tokenize("rate limiting on the search autocomplete"))
+        assert "rate-limiting" in labels
+        assert "search" in labels
+
+    def test_no_label_for_unrelated(self):
+        assert capability_labels(tokenize("zzzxqq blorp")) == []
+
+    def test_each_label_once(self):
+        labels = capability_labels(tokenize("page page paginate offset cursor"))
+        assert labels.count("pagination") == 1

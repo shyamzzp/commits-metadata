@@ -20,24 +20,31 @@ STOPWORDS = {
     "support", "implement", "implementing", "create", "creating", "new",
 }
 
-# Domain synonym groups. Each group's members are mutually expandable.
-_SYNONYM_GROUPS: list[set[str]] = [
-    {"pagination", "paginate", "paginated", "page", "pages", "paging",
-     "offset", "cursor", "perpage", "infinite", "scroll", "loadmore"},
-    {"search", "query", "autocomplete", "typeahead", "suggest", "suggestion",
-     "filter", "fulltext", "lookup"},
-    {"ratelimit", "ratelimiting", "throttle", "throttling", "quota", "backoff"},
-    {"auth", "authentication", "authorization", "login", "signin", "oauth",
-     "token", "session", "credential"},
-    {"cache", "caching", "memoize", "ttl", "invalidate"},
-    {"upload", "download", "file", "attachment", "multipart", "stream"},
-    {"webhook", "callback", "event", "subscribe", "notification"},
-    {"validation", "validate", "schema", "sanitize", "verify"},
-    {"retry", "retries", "deadletter", "queue", "backoff"},
-    {"button", "action", "click", "control", "ui", "component"},
-    {"sort", "sorting", "order", "ordering", "rank", "ranking"},
-    {"limit", "limits", "max", "maximum", "bound", "cap"},
-]
+# Labeled domain capability groups. Members of a group are mutually expandable,
+# and the label names the capability area (used for "people also asked").
+CAPABILITY_GROUPS: dict[str, set[str]] = {
+    "pagination": {"pagination", "paginate", "paginated", "page", "pages",
+                   "paging", "offset", "cursor", "perpage", "infinite",
+                   "scroll", "loadmore"},
+    "search": {"search", "query", "autocomplete", "typeahead", "suggest",
+               "suggestion", "filter", "fulltext", "lookup"},
+    "rate-limiting": {"ratelimit", "ratelimiting", "rate", "throttle",
+                      "throttling", "quota", "backoff", "debounce"},
+    "authentication": {"auth", "authentication", "authorization", "login",
+                       "signin", "oauth", "token", "session", "credential"},
+    "caching": {"cache", "caching", "memoize", "ttl", "invalidate"},
+    "file-transfer": {"upload", "download", "file", "attachment", "multipart",
+                      "stream"},
+    "webhooks": {"webhook", "callback", "event", "subscribe", "notification"},
+    "validation": {"validation", "validate", "schema", "sanitize", "verify"},
+    "retry-queue": {"retry", "retries", "deadletter", "queue", "backoff"},
+    "ui-actions": {"button", "action", "click", "control", "ui", "component"},
+    "sorting": {"sort", "sorting", "order", "ordering", "rank", "ranking"},
+    "limits": {"limit", "limits", "max", "maximum", "bound", "cap"},
+}
+
+# Each group's members are mutually expandable.
+_SYNONYM_GROUPS: list[set[str]] = [set(members) for members in CAPABILITY_GROUPS.values()]
 
 # Build a fast lookup: token -> set of synonyms (excluding itself).
 _EXPANSION: dict[str, set[str]] = {}
@@ -99,3 +106,29 @@ def _stemmed_expansion() -> dict[str, set[str]]:
             cache[key].discard(key)
         _STEMMED_EXPANSION_CACHE = cache
     return _STEMMED_EXPANSION_CACHE
+
+
+_STEMMED_CAPABILITIES_CACHE: dict[str, set[str]] | None = None
+
+
+def _stemmed_capabilities() -> dict[str, set[str]]:
+    global _STEMMED_CAPABILITIES_CACHE
+    if _STEMMED_CAPABILITIES_CACHE is None:
+        _STEMMED_CAPABILITIES_CACHE = {
+            label: {stem(m) for m in members}
+            for label, members in CAPABILITY_GROUPS.items()
+        }
+    return _STEMMED_CAPABILITIES_CACHE
+
+
+def capability_labels(tokens: list[str]) -> list[str]:
+    """Map (already-stemmed) tokens to the capability areas they touch.
+
+    Order follows the lexicon definition; each label appears at most once.
+    """
+    token_set = set(tokens)
+    return [
+        label
+        for label, members in _stemmed_capabilities().items()
+        if token_set & members
+    ]
